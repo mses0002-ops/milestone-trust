@@ -10,6 +10,17 @@
 | 延誤完工（寬限期內申報） | 全額 − 違約金（每日 0.1%，上限 20%） | 違約金 |
 | 工程終止（超過寬限期） | 全額 × 完成比例 | 剩餘款項 |
 
+## 期中 demo 合約
+
+2026-11-03 期中報告實際使用的是 `live_2`（Ethereum Sepolia）：
+
+| 項目 | 地址 |
+|---|---|
+| MilestoneTrust | [`0xB8338aA125976D994A59A8F7165079707C10Df02`](https://sepolia.etherscan.io/address/0xB8338aA125976D994A59A8F7165079707C10Df02) |
+| 交易代幣 MTK（18 位小數） | [`0x9cDF42E5680b0ac33ce51B1132Cb1856684Fd208`](https://sepolia.etherscan.io/address/0x9cDF42E5680b0ac33ce51B1132Cb1856684Fd208) |
+
+`frontend/deployments.json` 裡的 `live`、`practice` 是其他部署，不是這次報告的 demo 紀錄。
+
 ## 檔案
 
 ```
