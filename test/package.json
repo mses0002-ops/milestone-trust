@@ -1,0 +1,9 @@
+{
+  "name": "milestone-trust-tests",
+  "private": true,
+  "scripts": {
+    "test": "node contract.test.js ../contracts",
+    "e2e": "node frontend.e2e.js .."
+  },
+  "dependencies": { "solc": "0.8.24", "ethers": "6.13.4", "ganache": "7.9.2", "playwright": "^1.47.0" }
+}

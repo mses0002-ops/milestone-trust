@@ -1,0 +1,1063 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>里程碑請款權信託</title>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<style>
+  :root {
+    --ink: #14213D; --ink2: #3D4A63; --muted: #6B7689;
+    --bg: #F4F5F7; --card: #FFFFFF; --line: #DDE2E8;
+    --accent: #C2621C; --accent-soft: #FBE3CC;
+    --active: #DCE8F5; --claimed: #FBE3CC; --paid: #D9EBDD; --term: #F3C9BE;
+    --ok: #1E7B4A; --err: #B3261E;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 "Noto Sans TC", system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; }
+  header { background: var(--ink); color: #FBFBF8; padding: 16px 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 20px; margin: 0; }
+  header .sub { font-size: 13px; color: #BFCBDA; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 60px; display: grid; gap: 16px; }
+  section.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  h3 { font-size: 15px; margin: 0 0 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 16px; }
+  .grid2 > * { min-width: 0; }
+  label { font-size: 13px; color: var(--ink2); display: grid; gap: 4px; }
+  input, select { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: #FBFBF8; color: var(--ink); min-width: 0; }
+  input.addr { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  input.num { width: 120px; }
+  button { font: inherit; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--ink); background: var(--ink); color: #FBFBF8; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--ink); }
+  button.warn { background: var(--accent); border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  header button { background: #F2A65A; border-color: #F2A65A; color: var(--ink); font-weight: 600; }
+  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .chip { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 999px; background: #1F3054; color: #FBFBF8; }
+  .chips .chip { background: var(--accent-soft); color: var(--ink); }
+  .milestones { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 14px; }
+  .ms, .ms .kv span { min-width: 0; overflow-wrap: anywhere; }
+  input[type=file] { max-width: 100%; }
+  .ms { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); display: flex; flex-direction: column; }
+  .ms .top { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+  .ms .top b { font-size: 16px; }
+  .ms .body { padding: 12px 16px; display: grid; gap: 6px; border-top: 1px solid var(--line); }
+  .ms .kv { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+  .ms .kv span:first-child { color: var(--muted); }
+  .ms .actions { padding: 12px 16px; border-top: 1px dashed var(--line); display: grid; gap: 10px; background: #FAFBFC; }
+  .st-0 { background: var(--active); } .st-1 { background: var(--claimed); } .st-2 { background: var(--paid); } .st-3 { background: var(--term); }
+  .tradable { color: var(--ok); font-weight: 600; } .locked { color: var(--err); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  a { color: var(--accent); }
+  #toast { position: fixed; right: 16px; bottom: 16px; max-width: 420px; display: grid; gap: 8px; z-index: 10; }
+  .toast { background: var(--ink); color: #FBFBF8; padding: 10px 14px; border-radius: 10px; font-size: 14px; box-shadow: 0 6px 20px rgba(20,33,61,.25); }
+  .toast.err { background: var(--err); } .toast.ok { background: var(--ok); }
+  .rows { display: grid; gap: 8px; }
+  .hint { font-size: 12px; color: var(--muted); }
+  .empty { padding: 24px; text-align: center; color: var(--muted); }
+  tr.ev-progress td { background: var(--accent-soft); font-weight: 600; }
+  #cfgBox > summary { cursor: pointer; font-size: 17px; font-weight: 700; }
+  .flow-in { color: var(--ok); font-weight: 600; } .flow-out { color: var(--err); font-weight: 600; }
+  .flow-result { font-size: 18px; font-weight: 700; margin: 10px 0 4px; }
+  .pricing summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+  .pricing table { margin-top: 6px; }
+  .pricing .sum td { font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>里程碑請款權信託</h1>
+    <div class="sub">Ethereum Sepolia（chain ID 11155111）· 撥款規則由智能合約自動執行</div>
+  </div>
+  <div class="row">
+    <span id="netBadge" class="chip">未連線</span>
+    <span id="acct" class="mono" style="color:#BFCBDA"></span>
+    <button id="btnConnect">連接 MetaMask</button>
+  </div>
+</header>
+
+<main>
+  <!-- 設定 -->
+  <section class="card">
+    <details id="cfgBox" open>
+    <summary>合約設定</summary>
+    <div class="grid2" style="margin-top:12px">
+      <label>交易代幣地址<input id="cfgUsdc" class="addr" placeholder="0x…"></label>
+      <label>MilestoneTrust 地址<input id="cfgTrust" class="addr" placeholder="0x…"></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label>稽核紀錄起始區塊<input id="cfgFrom" class="num" placeholder="部署區塊"></label>
+      <button id="btnSaveCfg" class="ghost">儲存並載入</button>
+      <span id="params" class="muted"></span>
+    </div>
+    </details>
+  </section>
+
+  <!-- 錢包 -->
+  <section class="card">
+    <h2>我的錢包</h2>
+    <div class="row">
+      <span><span class="sym">–</span>：<b id="balUsdc">–</b></span>
+      <span>Sepolia ETH：<b id="balEth">–</b></span>
+      <button id="btnMint" class="ghost" hidden>領 100,000 測試 <span class="sym">–</span></button>
+      <span class="chips" id="roles"></span>
+    </div>
+  </section>
+
+  <!-- 資金流水 -->
+  <section class="card" id="secFlow" hidden>
+    <h2>我的資金流水</h2>
+    <div id="flow"></div>
+  </section>
+
+  <!-- 承包商：工程損益 -->
+  <section class="card" id="secContractor" hidden>
+    <h2>承包商：工程損益</h2>
+    <div class="row">
+      <label>準時完工的利潤比例 %<input id="asMargin" class="num" type="number" min="0" max="100" step="0.5" value="20"></label>
+      <span class="hint" id="marginHint"></span>
+    </div>
+    <div id="contractorPnl" style="margin-top:10px"></div>
+  </section>
+
+  <!-- 合約時鐘 -->
+  <section class="card" id="clock">
+    <h2>合約時鐘</h2>
+    <div class="row">
+      <span>目前合約時間：<b id="clockNow">–</b></span>
+      <span id="clockOffset" class="muted"></span>
+    </div>
+    <p id="clockNote" class="hint" style="margin:8px 0 0"></p>
+    <div id="clockAdmin" class="row" style="margin-top:10px" hidden>
+      <span class="muted">demo 管理員快轉：</span>
+      <button class="ghost" onclick="act.advance(1)">＋1 天</button>
+      <button class="ghost" onclick="act.advance(5)">＋5 天</button>
+      <button class="ghost" onclick="act.advance(10)">＋10 天</button>
+      <button class="ghost" onclick="act.advance(30)">＋30 天</button>
+      <input id="clockDays" class="num" type="number" min="1" step="1" placeholder="自訂天數">
+      <button class="ghost" id="btnClockCustom">快轉</button>
+      <span class="row" style="gap:6px">快轉到第
+        <input id="gotoId" class="num" style="width:70px" type="number" min="1" step="1" value="3"> 期期限後
+        <input id="gotoLate" class="num" style="width:70px" type="number" min="0" step="1" value="2"> 天
+        <button class="ghost" id="btnClockGoto">快轉到該時間</button>
+      </span>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <!-- 業主：建立專案 -->
+    <section class="card" id="secCreate" hidden>
+      <h2>業主：建立信託專案</h2>
+      <div class="rows">
+        <label>承包商地址<input id="cpContractor" class="addr" placeholder="0x…"></label>
+        <label>監造方地址<input id="cpAttester" class="addr" placeholder="0x…（不能是業主或承包商）"></label>
+        <div id="cpRows" class="rows"></div>
+        <div class="row">
+          <button id="btnAddRow" class="ghost">＋ 新增一期</button>
+          <span class="muted">合計：<b id="cpTotal">0</b> <span class="sym">–</span></span>
+        </div>
+        <button id="btnCreate">建立專案（授權並存入工程款）</button>
+        <div class="hint">可調整期數（1 到 10 期）、每期金額與間隔天數。每份合約只能建立一次，存入後無法修改。會先送出 approve，再送出 createProject，共兩筆交易。</div>
+      </div>
+    </section>
+
+    <!-- 定價假設 -->
+    <section class="card" id="secPricing" hidden>
+      <h2>定價試算假設</h2>
+      <div class="row">
+        <label>年利率 %<input id="asRate" class="num" type="number" value="4" step="0.1"></label>
+        <label>完工中延誤的比例 %<input id="asLateShare" class="num" type="number" value="15"></label>
+        <label>平均延誤天數<input id="asLateDays" class="num" type="number" value="30"></label>
+        <label>終止時完成比例 %<input id="asTermDone" class="num" type="number" value="70"></label>
+      </div>
+      <h3 style="margin-top:14px">參考範例：面額 30,000、p = 99、距期限 90 天</h3>
+      <div id="priceRef" class="pricing"></div>
+      <p class="hint">表格會隨上方假設即時更新。p 為鏈上的完工機率（在寬限期內完成的機率）。每張進行中的里程碑卡片，也能展開自己的「定價試算表」。</p>
+    </section>
+  </div>
+
+  <!-- 里程碑 -->
+  <section class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <h2 style="margin:0">里程碑請款權</h2>
+      <div class="row">
+        <button id="btnReload" class="ghost">重新整理</button>
+      </div>
+    </div>
+    <div id="milestones" class="milestones"><div class="empty">請先連接錢包並設定合約地址</div></div>
+  </section>
+
+  <!-- 稽核紀錄 -->
+  <section class="card">
+    <h2>稽核紀錄（鏈上事件）</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>區塊</th><th>事件</th><th>內容</th><th>交易</th></tr></thead>
+        <tbody id="audit"><tr><td colspan="4" class="empty">尚無資料</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ───────────────────────── 常數與 ABI ─────────────────────────
+const SEPOLIA = { chainId: "0xaa36a7", chainName: "Sepolia", rpcUrls: ["https://rpc.sepolia.org"],
+  nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://sepolia.etherscan.io"] };
+const EXPLORER = "https://sepolia.etherscan.io";
+let DEC = 18;   // 連上合約後改用代幣自己的小數位數
+
+const USDC_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+  "function approve(address,uint256) returns (bool)",
+  "function mint(address,uint256)",
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+];
+const TRUST_ABI = [
+  "function DAY() view returns (uint256)",
+  "function GRACE() view returns (uint256)",
+  "function MIN_PROB() view returns (uint16)",
+  "function oracle() view returns (address)",
+  "function milestoneCount() view returns (uint256)",
+  "function currentTime() view returns (uint256)",
+  "function timeOffset() view returns (uint256)",
+  "function advanceTime(uint256 days_)",
+  "function projects(uint256) view returns (address owner, address contractor, address attester)",
+  "function milestones(uint256) view returns (uint256 projectId, uint256 face, uint256 deadline, uint256 claimedAt, bytes32 evidenceHash, uint8 status, uint16 probability, uint256 listPrice, uint16 progressBps, uint256 progressAt)",
+  "function ownerOf(uint256) view returns (address)",
+  "function isTradable(uint256) view returns (bool)",
+  "function penaltyOf(uint256) view returns (uint256 penalty, uint256 daysLate)",
+  "function createProject(address contractor, address attester, uint256[] faces, uint256[] deadlines) returns (uint256, uint256)",
+  "function setProbability(uint256 id, uint16 p)",
+  "function list(uint256 id, uint256 price)",
+  "function cancelListing(uint256 id)",
+  "function buy(uint256 id, uint256 maxPrice)",
+  "function claimComplete(uint256 id, bytes32 evidenceHash)",
+  "function rejectClaim(uint256 id, uint16 bps, bytes32 evidenceHash)",
+  "function attest(uint256 id)",
+  "function reportProgress(uint256 id, uint16 bps, bytes32 evidenceHash)",
+  "function terminate(uint256 id, uint16 completedBps, bytes32 evidenceHash)",
+  "event ProjectCreated(uint256 indexed projectId, address indexed owner, address contractor, address attester, uint256 firstMilestoneId, uint256 count, uint256 total)",
+  "event TimeAdvanced(uint256 numDays, uint256 newOffset, uint256 newTime)",
+  "event ProbabilitySet(uint256 indexed id, uint16 probability)",
+  "event Listed(uint256 indexed id, address indexed seller, uint256 price)",
+  "event ListingCancelled(uint256 indexed id)",
+  "event Sold(uint256 indexed id, address indexed seller, address indexed buyer, uint256 price)",
+  "event CompletionClaimed(uint256 indexed id, uint256 claimedAt, bytes32 evidenceHash)",
+  "event ClaimRejected(uint256 indexed id)",
+  "event ProgressReported(uint256 indexed id, uint16 bps, bytes32 evidenceHash, uint256 reportedAt)",
+  "event MilestonePaid(uint256 indexed id, address indexed holder, uint256 toHolder, uint256 penalty, uint256 daysLate)",
+  "event MilestoneTerminated(uint256 indexed id, address indexed holder, uint256 toHolder, uint256 toOwner, uint16 completedBps, bytes32 evidenceHash)",
+];
+
+const STATUS = ["Active 進行中", "Claimed 已申報", "Paid 已撥款", "Terminated 已終止"];
+const REASONS = {
+  "not tradable": "目前不可轉讓：需為 Active 且完工機率 ≥ 70",
+  "only oracle": "只有機率來源（demo 管理員）帳號可以執行",
+  "only contractor": "只有承包商可以申報完工",
+  "only attester": "只有監造方可以執行",
+  "not holder": "你不是這張請款權的持有人",
+  "price changed": "售價已變動，請重新整理後再買",
+  "grace period over": "已超過寬限期，無法再申報",
+  "grace period not over": "寬限期尚未結束，還不能終止",
+  "attester must be independent": "監造方不能是業主或承包商",
+  "owner cannot be contractor": "業主不能同時是承包商",
+  "oracle cannot hold": "機率來源不可持有請款權",
+  "attester cannot hold": "監造方不可持有自己監造專案的請款權",
+  "allowance too low": "代幣授權額度不足",
+  "USDC transfer failed": "代幣轉帳失敗",
+  "balance too low": "代幣餘額不足",
+  "deadline in the past": "期限必須在未來",
+  "evidence required": "需要附上證明文件或說明",
+  "not claimed": "此期尚未申報完工",
+  "already settled": "此期已結算",
+  "already holder": "你已經是持有人",
+  "not listed": "此期尚未上架",
+  "bps must be <= 10000": "比例必須介於 0% 到 100%",
+  "bps must be < 10000": "駁回時完成比例必須低於 100%",
+  "days must be >= 1": "快轉天數至少 1 天",
+  "p must be 0-100": "完工機率必須介於 0 到 100",
+  "price must be > 0": "售價必須大於 0",
+  "price above face": "售價不能高於面額",
+  "face must be > 0": "每期面額必須大於 0",
+  "1 to 10 milestones": "每個專案要有 1 到 10 期",
+  "length mismatch": "面額與期限的期數不一致",
+  "no such milestone": "找不到這一期",
+  "zero address": "地址不能是零地址",
+  "transfer to zero": "不能轉給零地址",
+};
+
+// ───────────────────────── 狀態 ─────────────────────────
+const S = { provider: null, signer: null, account: null, usdc: null, trust: null,
+  DAY: 86400n, GRACE: 5184000n, MIN_PROB: 70, oracle: null, items: [], openPricing: new Set(), symbol: "–" };
+const $ = id => document.getElementById(id);
+const fmt = v => Number(ethers.formatUnits(v, DEC)).toLocaleString("zh-TW", { maximumFractionDigits: 2 });
+const short = a => a ? a.slice(0, 6) + "…" + a.slice(-4) : "";
+const same = (a, b) => a && b && a.toLowerCase() === b.toLowerCase();
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function toast(msg, kind = "") {
+  const el = document.createElement("div");
+  el.className = "toast " + kind; el.textContent = msg;
+  $("toast").appendChild(el);
+  setTimeout(() => el.remove(), kind === "err" ? 9000 : 5000);
+  return el;
+}
+function reason(e) {
+  const raw = e?.reason || e?.info?.error?.message || e?.shortMessage || e?.message || String(e);
+  if (e?.code === "ACTION_REJECTED") return "你在 MetaMask 取消了交易";
+  for (const k in REASONS) if (raw.includes(k)) return REASONS[k];
+  return raw.slice(0, 160);
+}
+async function send(label, fn) {
+  const t = toast(label + "：請在 MetaMask 確認…");
+  try {
+    const tx = await fn();
+    t.textContent = label + "：等待區塊確認…";
+    await tx.wait();
+    t.remove(); toast(label + "：完成", "ok");
+    S.dropDrafts = true;   // 內容已送出，不再保留
+    await refresh();
+    return true;
+  } catch (e) {
+    t.remove(); toast(label + "失敗：" + reason(e), "err");
+    return false;
+  }
+}
+
+// ───────────────────────── 設定（存在瀏覽器） ─────────────────────────
+// ?env=practice 或 ?env=live：地址由部署腳本寫在 deployments.json，不用複製一長串網址
+async function loadEnvCfg(name) {
+  try {
+    const res = await fetch("deployments.json", { cache: "no-store" });
+    const cfg = (await res.json())[name];
+    if (!cfg) toast(`找不到 ${name} 的部署設定`, "err");
+    return cfg || {};
+  } catch (_) {
+    toast("讀不到 deployments.json，請確認有在 frontend 資料夾啟動伺服器", "err");
+    return {};
+  }
+}
+async function loadCfg() {
+  const q = new URLSearchParams(location.search);
+  const env = q.get("env") ? await loadEnvCfg(q.get("env")) : {};
+  const get = k => q.get(k) || env[k] || "";
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem("mt-cfg") || "{}"); } catch (_) {}
+  $("cfgUsdc").value = get("usdc") || saved.usdc || "";
+  $("cfgTrust").value = get("trust") || saved.trust || "";
+  $("cfgFrom").value = get("from") || saved.from || "";
+  // 只有業主看得到表單，兩個地址也不用手打。地址不完整時當作沒有指定，不能讓表單默默消失
+  const valid = v => (ethers.isAddress(v.trim()) ? v.trim() : "");
+  S.ownerHint = valid(get("owner")) || null;
+  $("cpContractor").value = valid(get("contractor"));
+  $("cpAttester").value = valid(get("attester"));
+}
+function saveCfg() {
+  try { localStorage.setItem("mt-cfg", JSON.stringify({ usdc: $("cfgUsdc").value.trim(), trust: $("cfgTrust").value.trim(), from: $("cfgFrom").value.trim() })); } catch (_) {}
+}
+
+// ───────────────────────── 連接錢包 ─────────────────────────
+let connectRun = 0, syncing = false;
+async function ensureSepolia() {
+  try {
+    await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: SEPOLIA.chainId }] });
+  } catch (e) {
+    if (e.code === 4902) await window.ethereum.request({ method: "wallet_addEthereumChain", params: [SEPOLIA] });
+    else throw e;
+  }
+}
+// MetaMask 只會把「已授權給這個網站」的帳號告訴頁面：切到沒授權的帳號時不會通知，
+// eth_requestAccounts 也不會跳視窗。所以已連線後按按鈕，要改用 wallet_requestPermissions 開啟帳號選擇。
+async function connect(chooseAccounts = false) {
+  if (!window.ethereum) { toast("找不到 MetaMask，請先安裝瀏覽器擴充功能", "err"); return; }
+  const asking = chooseAccounts && S.account;
+  const run = ++connectRun;   // 連續切換時只採用最新一次，舊的結果晚回來也不能蓋掉
+  try {
+    await cfgReady;
+    if (asking) {
+      $("btnConnect").disabled = true;   // 視窗處理完之前不能重複送出
+      await window.ethereum.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] });
+    }
+    const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+    await ensureSepolia();
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner(accounts[0]);   // accounts[0] 是 MetaMask 目前選的帳號
+    const account = await signer.getAddress();
+    const net = await provider.getNetwork();
+    if (run !== connectRun) return;
+    Object.assign(S, { provider, signer, account });
+    S.dropDrafts = true;   // 換帳號後不沿用上一個角色的輸入
+    $("netBadge").textContent = net.chainId === 11155111n ? "Sepolia" : "錯誤網路 " + net.chainId;
+    $("acct").textContent = short(S.account);
+    $("btnConnect").textContent = "授權／切換帳號";
+    await bindContracts();
+  } catch (e) {
+    if (e.code === 4001 || e.code === "ACTION_REJECTED") toast("你取消了 MetaMask 的操作");
+    else if (e.code === -32002) toast("MetaMask 還有視窗等待處理，請點瀏覽器工具列的 MetaMask 圖示完成", "err");
+    else toast("連接失敗：" + reason(e), "err");
+  } finally {
+    if (asking) $("btnConnect").disabled = false;
+  }
+}
+// 不能只靠 accountsChanged：頁面開久了可能收不到事件，所以定期比對 MetaMask 目前選的帳號
+async function syncAccount() {
+  if (!S.account || syncing || !window.ethereum) return;
+  syncing = true;
+  try {
+    const accounts = await window.ethereum.request({ method: "eth_accounts" });
+    if (!S.account) return;
+    if (!accounts.length) disconnected();
+    else if (!same(accounts[0], S.account)) await connect();
+  } catch (_) {
+    // 暫時讀不到就等下一輪
+  } finally { syncing = false; }
+}
+
+function disconnected() {
+  connectRun++;
+  Object.assign(S, { provider: null, signer: null, account: null, usdc: null, trust: null, items: [] });
+  $("acct").textContent = ""; $("netBadge").textContent = "未連線";
+  $("btnConnect").textContent = "連接 MetaMask";
+  $("clockAdmin").hidden = $("secCreate").hidden = $("secPricing").hidden = $("secFlow").hidden = $("secContractor").hidden = true;
+  $("milestones").innerHTML = '<div class="empty">請先連接錢包並設定合約地址</div>';
+}
+async function bindContracts() {
+  const u = $("cfgUsdc").value.trim(), t = $("cfgTrust").value.trim();
+  if (!S.signer) return;
+  if (!ethers.isAddress(u) || !ethers.isAddress(t)) { S.usdc = S.trust = null; S.items = []; $("cfgBox").open = true; $("milestones").innerHTML = '<div class="empty">請填入兩個合約地址後按「儲存並載入」</div>'; return; }
+  S.usdc = new ethers.Contract(u, USDC_ABI, S.signer);
+  S.trust = new ethers.Contract(t, TRUST_ABI, S.signer);
+  try {
+    [S.DAY, S.GRACE, S.MIN_PROB, S.oracle] = await Promise.all([S.trust.DAY(), S.trust.GRACE(), S.trust.MIN_PROB(), S.trust.oracle()]);
+    S.MIN_PROB = Number(S.MIN_PROB);
+    const [decimals, symbol] = await Promise.all([S.usdc.decimals(), S.usdc.symbol()]);
+    DEC = Number(decimals); S.symbol = symbol;
+    document.querySelectorAll(".sym").forEach(el => { el.textContent = symbol; });
+    await updateMintButton();
+    $("params").textContent = `1 天 = ${S.DAY} 秒 · 寬限期 ${Number(S.GRACE) / Number(S.DAY)} 天 · 可交易門檻 p ≥ ${S.MIN_PROB} · 機率來源 ${short(S.oracle)}`;
+  } catch (e) { $("cfgBox").open = true; toast("讀不到合約，請確認地址與網路：" + reason(e), "err"); return; }
+  $("cfgBox").open = false;   // 載入成功後收合，需要時再展開
+  await refresh();
+}
+
+// 有些代幣只有 owner 能 mint（例如 MTK）：先模擬一次，不能領的帳號就不顯示按鈕
+async function updateMintButton() {
+  let allowed = false;
+  try { await S.usdc.mint.staticCall(S.account, 1n); allowed = true; } catch (_) {}
+  $("btnMint").hidden = !allowed;
+}
+
+// ───────────────────────── 讀取鏈上資料 ─────────────────────────
+async function refresh() {
+  if (!S.trust) return;
+  const me = S.account, trust = S.trust;   // 讀取途中換了帳號或合約，就丟掉這次的結果，避免顯示舊資料
+  const [bal, eth, count, now, offset] = await Promise.all([
+    S.usdc.balanceOf(S.account), S.provider.getBalance(S.account), S.trust.milestoneCount(), S.trust.currentTime(), S.trust.timeOffset(),
+  ]);
+  if (me !== S.account || trust !== S.trust) return;
+  S.now = now;
+  renderClock(offset);
+  $("balUsdc").textContent = fmt(bal);
+  $("balEth").textContent = Number(ethers.formatEther(eth)).toFixed(4);
+
+  const ids = Array.from({ length: Number(count) }, (_, i) => i + 1);
+  S.items = await Promise.all(ids.map(async id => {
+    const m = await S.trust.milestones(id);
+    const [owner, project, tradable, pen] = await Promise.all([
+      S.trust.ownerOf(id), S.trust.projects(m.projectId), S.trust.isTradable(id), S.trust.penaltyOf(id),
+    ]);
+    return { id, m, owner, project, tradable, penalty: pen.penalty, daysLate: pen.daysLate };
+  }));
+  if (me !== S.account || trust !== S.trust) return;
+  renderRoles(); applyRoleView(); renderMilestones(); loadAudit();
+}
+
+function renderClock(offset) {
+  $("clockNow").textContent = new Date(Number(S.now) * 1000).toLocaleString("zh-TW");
+  $("clockNow").dataset.ts = String(S.now);
+  $("clockOffset").textContent = offset > 0n ? `已快轉 ${Number(offset) / Number(S.DAY)} 天` : "尚未快轉";
+  $("clockAdmin").hidden = !same(S.oracle, S.account);
+  $("clockNote").textContent = same(S.oracle, S.account)
+    ? "快轉僅供課堂 DEMO 使用，正式版本會移除。"
+    : `快轉僅供課堂 DEMO 使用，由 demo 管理員（${short(S.oracle)}）操作，正式版本會移除。`;
+}
+
+// ───────────────────────── 依角色決定畫面 ─────────────────────────
+// 每個帳號只看得到自己用得到的內容。真正的權限仍由合約把關，這裡只決定顯示
+function cardVisible(x) {
+  const me = S.account;
+  if (same(S.oracle, me)) return true;   // 機率來源要能設定每一期
+  if ([x.owner, x.project.owner, x.project.contractor, x.project.attester].some(a => same(a, me))) return true;
+  return x.m.listPrice > 0n && Number(x.m.status) === 0;   // 投資人要看得到上架中的才能購買
+}
+function seesPricing(x) {
+  const me = S.account;
+  if (same(S.oracle, me) || same(x.project.attester, me)) return false;
+  // 業主也能買賣請款權：上架中或自己持有時，才需要建議價當參考
+  if (same(x.project.owner, me)) return x.m.listPrice > 0n || same(x.owner, me);
+  return true;
+}
+function applyRoleView() {
+  const me = S.account;
+  const isOwner = S.items.some(x => same(x.project.owner, me));
+  const isAttester = S.items.some(x => same(x.project.attester, me));
+  const isFutureOwner = !S.items.length && same(S.ownerHint, me);
+  // 每份部署只建一個專案：建好後表單消失。網址沒指定業主時，還沒有專案就所有人都看得到
+  $("secCreate").hidden = !!S.items.length || (!!S.ownerHint && !isFutureOwner);
+  $("secPricing").hidden = same(S.oracle, me) || isOwner || isAttester || isFutureOwner;
+}
+
+function renderRoles() {
+  const r = new Set();
+  for (const x of S.items) {
+    if (same(x.project.owner, S.account)) r.add("業主");
+    if (same(x.project.contractor, S.account)) r.add("承包商");
+    if (same(x.project.attester, S.account)) r.add("監造方");
+    if (same(x.owner, S.account)) r.add("持有人");
+  }
+  if (same(S.oracle, S.account)) r.add("機率來源");
+  if (same(S.ownerHint, S.account)) r.add("業主");   // 建立專案前，鏈上還看不出誰是業主
+  $("roles").innerHTML = [...r].map(x => `<span class="chip">${x}</span>`).join(" ") || '<span class="muted">尚無角色（可當投資人購買）</span>';
+}
+
+// ───────────────────────── 定價試算 ─────────────────────────
+// 第 10 節的情境表：每列 [情境, 機率, 持有人拿到]；期望值 = 機率 × 拿到的加總
+function pricingOf(face, p, days) {
+  const r = Number($("asRate").value) / 100;
+  const lateShare = Number($("asLateShare").value) / 100;
+  const latePenalty = Math.min(Number($("asLateDays").value) * 0.001, 0.2);
+  const termDone = Number($("asTermDone").value) / 100;
+  const rows = [
+    ["如期", p * (1 - lateShare), face],
+    ["延誤", p * lateShare, face * (1 - latePenalty)],
+    ["終止", 1 - p, face * termDone],
+  ];
+  const expected = rows.reduce((sum, [, prob, value]) => sum + prob * value, 0);
+  const discount = Math.exp(-r * days / 365);
+  return { rows, expected, discount, price: expected * discount };
+}
+function pricing(x) {
+  const face = Number(ethers.formatUnits(x.m.face, DEC));
+  const days = Math.max(0, Number(x.m.deadline - S.now) / Number(S.DAY));
+  return pricingOf(face, Number(x.m.probability) / 100, days);
+}
+
+function pricingTable(pr) {
+  const money = v => v.toLocaleString("zh-TW", { maximumFractionDigits: 0 });
+  const pct = v => (v * 100).toLocaleString("zh-TW", { maximumFractionDigits: 2 }) + "%";
+  return `<table>
+      <thead><tr><th>情境</th><th>機率</th><th>持有人拿到</th><th>加權</th></tr></thead>
+      <tbody>
+        ${pr.rows.map(([name, prob, value]) => `<tr><td>${name}</td><td>${pct(prob)}</td><td>${money(value)}</td><td>${money(prob * value)}</td></tr>`).join("")}
+        <tr class="sum"><td>期望值</td><td></td><td></td><td>${money(pr.expected)}</td></tr>
+        <tr><td>時間折現</td><td></td><td>${pr.discount.toFixed(4)}</td><td></td></tr>
+        <tr class="sum"><td>建議價</td><td></td><td></td><td>${money(pr.price)}</td></tr>
+      </tbody>
+    </table>`;
+}
+function pricingHtml(x, pr) {
+  return `<details class="pricing" ${S.openPricing.has(x.id) ? "open" : ""} ontoggle="togglePricing(${x.id}, this.open)">
+    <summary>定價試算表</summary>
+    ${pricingTable(pr)}
+  </details>`;
+}
+// 假設區塊的參考範例：不用連錢包，調整假設時即時更新
+function renderPriceRef() {
+  $("priceRef").innerHTML = pricingTable(pricingOf(30000, 0.99, 90));
+}
+// 卡片每次重新整理都會重繪，所以展開狀態要另外記住
+function togglePricing(id, open) {
+  if (open) S.openPricing.add(id); else S.openPricing.delete(id);
+}
+window.togglePricing = togglePricing;
+
+// ───────────────────────── 畫面：里程碑卡片 ─────────────────────────
+function timeLeft(deadline) {
+  const d = (Number(deadline) - Number(S.now)) / Number(S.DAY);
+  if (d >= 0) return `剩 ${d.toFixed(1)} 天`;
+  const g = (Number(deadline + S.GRACE) - Number(S.now)) / Number(S.DAY);
+  return g >= 0 ? `已逾期，寬限期剩 ${g.toFixed(1)} 天` : "已超過寬限期";
+}
+
+// 卡片每次重新整理都會整塊重繪，所以先記下使用者改過的欄位，畫完再放回去
+// 只記「改過」的：沒改過的欄位要跟著最新的建議價、最新進度更新
+function saveDrafts(box) {
+  const drafts = S.dropDrafts ? [] : [...box.querySelectorAll("input[id]")]
+    .filter(i => i.type === "file" ? i.files.length > 0 : i.value !== i.defaultValue);
+  const focusId = box.contains(document.activeElement) ? document.activeElement.id : null;
+  S.dropDrafts = false;
+  return { drafts, focusId };
+}
+function restoreDrafts({ drafts, focusId }) {
+  for (const old of drafts) {
+    const now = $(old.id);
+    if (!now) continue;
+    if (old.type === "file") now.replaceWith(old);   // 瀏覽器不允許用程式設定選好的檔案，所以直接放回原本的元素
+    else now.value = old.value;
+  }
+  if (focusId) $(focusId)?.focus();
+}
+
+function renderMilestones() {
+  const box = $("milestones");
+  const saved = saveDrafts(box);
+  const list = S.items.filter(cardVisible);
+  if (!list.length) {
+    box.innerHTML = `<div class="empty">${S.items.length ? "目前沒有與你有關或上架中的請款權" : ($("secCreate").hidden ? `業主尚未建立專案${S.ownerHint ? `（指定業主 ${short(S.ownerHint)}）` : ""}` : "目前還沒有專案，請在上方設定期數、金額與間隔天數後建立")}</div>`;
+    return;
+  }
+  box.innerHTML = list.map(x => {
+    const st = Number(x.m.status);
+    const listed = x.m.listPrice > 0n;
+    const pr = pricing(x), sugg = pr.price;
+    return `<div class="ms">
+      <div class="top st-${st}"><b>#${x.id}・專案 ${x.m.projectId}</b><span>${STATUS[st]}</span></div>
+      <div class="body">
+        <div class="kv"><span>面額</span><b>${fmt(x.m.face)} ${esc(S.symbol)}</b></div>
+        <div class="kv"><span>期限</span><span>${new Date(Number(x.m.deadline) * 1000).toLocaleString("zh-TW")}（${timeLeft(x.m.deadline)}）</span></div>
+        <div class="kv"><span>完工機率 p</span><span>${x.m.probability}%・${x.tradable ? `<span class="tradable">可交易${!listed && !same(x.owner, S.account) ? "（持有人才能上架）" : ""}</span>` : '<span class="locked">不可轉讓</span>'}</span></div>
+        <div class="kv"><span>持有人</span><span class="mono">${short(x.owner)}${same(x.owner, S.account) ? "（你）" : ""}</span></div>
+        <div class="kv"><span>業主／承包商／監造方</span><span class="mono">${short(x.project.owner)}／${short(x.project.contractor)}／${short(x.project.attester)}</span></div>
+        ${listed ? `<div class="kv"><span>上架價格</span><b>${fmt(x.m.listPrice)} ${esc(S.symbol)}</b></div>` : ""}
+        ${st === 0 && seesPricing(x) ? `<div class="kv"><span>建議價（試算）</span><span>${sugg.toLocaleString("zh-TW", { maximumFractionDigits: 0 })} ${esc(S.symbol)}</span></div>${pricingHtml(x, pr)}` : ""}
+        ${x.m.claimedAt > 0n ? `<div class="kv"><span>申報時間</span><span>${new Date(Number(x.m.claimedAt) * 1000).toLocaleString("zh-TW")}・延誤 ${x.daysLate} 天・違約金 ${fmt(x.penalty)}</span></div>` : ""}
+        ${x.m.progressAt > 0n ? `<div class="kv"><span>最新進度</span><span>${Number(x.m.progressBps) / 100}%・${new Date(Number(x.m.progressAt) * 1000).toLocaleString("zh-TW")}</span></div>` : ""}
+        ${x.m.evidenceHash !== ethers.ZeroHash ? `<div class="kv"><span>證據 hash</span><span class="mono" title="${x.m.evidenceHash}">${short(x.m.evidenceHash)}</span></div>` : ""}
+      </div>
+      ${actionsHtml(x, st, listed, sugg)}
+    </div>`;
+  }).join("");
+  restoreDrafts(saved);
+  list.forEach(x => { termPreview(x.id); reviewUi(x.id); });
+}
+
+// 驗收結果決定按鈕：100% 才能核准，低於 100% 就是駁回並記下進度，不會填 70 卻按到核准
+function reviewUi(id) {
+  const input = $(`acc-${id}`);
+  if (!input) return;
+  const raw = input.value.trim(), n = Number(raw), valid = raw !== "" && Number.isFinite(n) && n >= 0 && n <= 100;
+  const btn = $(`acc-btn-${id}`), full = valid && n === 100;
+  btn.textContent = full ? "核准並撥款" : "駁回並回報進度";
+  btn.className = full ? "" : "warn";
+  btn.disabled = !valid;
+  $(`acc-ev-${id}`).hidden = full;
+  $(`acc-hint-${id}`).textContent = !valid ? "請輸入 0 到 100"
+    : full ? "核准後依申報時間計算違約金，撥款給當下持有人。"
+    : `回到進行中，承包商修正後可再申報；進度 ${n}% 會出現在稽核紀錄。`;
+}
+window.reviewUi = reviewUi;
+
+// 終止前即時顯示分配結果：按下去就不能改，所以先讓監造方看清楚各拿多少
+function termPreview(id) {
+  const box = $(`done-preview-${id}`), input = $(`done-${id}`);
+  const x = S.items.find(i => i.id === id);
+  if (!box || !input || !x) return;
+  const raw = input.value.trim(), n = Number(raw);
+  if (raw === "" || !Number.isFinite(n) || n < 0 || n > 100) { box.textContent = "請輸入 0 到 100 的完成比例"; return; }
+  const toHolder = x.m.face * BigInt(Math.round(n * 100)) / 10000n, unit = S.symbol;
+  const notes = [`按下終止後：持有人 ${fmt(toHolder)} ${unit}、業主 ${fmt(x.m.face - toHolder)} ${unit}。`];
+  const reported = x.m.progressAt > 0n ? Number(x.m.progressBps) / 100 : null;
+  notes.push(reported === null ? "尚未回報過進度。" : reported === n ? `與最新回報進度 ${reported}% 相同。` : `注意：與最新回報進度 ${reported}% 不同。`);
+  if (n === 0) notes.push("注意：完成 0%，持有人將拿到 0。");
+  box.textContent = notes.join(" ");
+}
+window.termPreview = termPreview;
+
+function actionsHtml(x, st, listed, sugg) {
+  const me = S.account, id = x.id, out = [];
+  const isOracle = same(S.oracle, me), isHolder = same(x.owner, me);
+  const isContractor = same(x.project.contractor, me), isAttester = same(x.project.attester, me);
+  const pastGrace = S.now > x.m.deadline + S.GRACE;
+
+  if (isOracle && (st === 0 || st === 1))
+    out.push(`<div class="row"><input id="p-${id}" class="num" type="number" min="0" max="100" value="${x.m.probability}"> <button onclick="act.setP(${id})">設定完工機率</button></div>`);
+  if (isHolder && st === 0) {
+    if (listed) out.push(`<div class="row"><button class="ghost" onclick="act.cancel(${id})">取消上架</button></div>`);
+    else out.push(`<div class="row"><input id="price-${id}" class="num" type="number" value="${Math.floor(sugg)}"> <button ${x.tradable ? "" : "disabled"} onclick="act.list(${id})">上架賣斷</button>${x.tradable ? "" : '<span class="hint">p 低於門檻，暫停交易</span>'}</div>`);
+  }
+  if (!isHolder && !isOracle && !isAttester && listed && st === 0)
+    out.push(`<div class="row"><button class="warn" ${x.tradable ? "" : "disabled"} onclick="act.buy(${id})">以 ${fmt(x.m.listPrice)} 購買</button>${x.tradable ? "" : '<span class="hint">p 低於門檻，暫停交易</span>'}</div>`);
+  if (isContractor && st === 0 && !pastGrace)
+    out.push(`<div class="rows"><input id="ev-${id}" type="file"><input id="evt-${id}" placeholder="或輸入說明文字"><button onclick="act.claim(${id})">申報完工</button></div>`);
+  if (isAttester && st === 0)
+    out.push(`<div class="rows"><label>目前進度 %（僅紀錄，不影響撥款）<input id="prog-${id}" class="num" type="number" min="0" max="100" value="${Number(x.m.progressBps) / 100}"></label><input id="pev-${id}" type="file"><input id="pevt-${id}" placeholder="或輸入進度說明"><button class="ghost" onclick="act.progress(${id})">回報進度</button></div>`);
+  if (isAttester && st === 1)
+    out.push(`<div class="rows"><label>驗收結果：實際完成 %（100 才能核准，低於 100 會駁回）<input id="acc-${id}" class="num" type="number" min="0" max="100" value="100" oninput="reviewUi(${id})"></label>
+      <div id="acc-ev-${id}" class="rows" hidden><input id="aev-${id}" type="file"><input id="aevt-${id}" placeholder="或輸入未完成的原因"></div>
+      <div id="acc-hint-${id}" class="hint"></div>
+      <button id="acc-btn-${id}" onclick="act.review(${id})">核准並撥款</button></div>`);
+  if (isAttester && (st === 0 || st === 1))
+    out.push(pastGrace
+      ? `<div class="rows"><label>最終完成比例 %（決定分配，確定後無法更改）<input id="done-${id}" class="num" type="number" min="0" max="100" value="${Number(x.m.progressBps) / 100}" oninput="termPreview(${id})"></label><div id="done-preview-${id}" class="hint"></div><input id="tev-${id}" type="file"><input id="tevt-${id}" placeholder="或輸入鑑定說明"><button class="warn" onclick="act.terminate(${id})">終止並依比例分配</button></div>`
+      : `<div class="hint">寬限期結束後，監造方才能終止此期</div>`);
+  return out.length ? `<div class="actions">${out.join("")}</div>` : "";
+}
+
+// ───────────────────────── 操作 ─────────────────────────
+async function evidenceHash(fileInput, textInput) {
+  const f = $(fileInput)?.files?.[0];
+  if (f) {
+    const digest = await crypto.subtle.digest("SHA-256", await f.arrayBuffer());
+    return ethers.hexlify(new Uint8Array(digest));
+  }
+  const t = $(textInput)?.value.trim();
+  return t ? ethers.id(t) : null;
+}
+async function ensureAllowance(amount) {
+  const cur = await S.usdc.allowance(S.account, await S.trust.getAddress());
+  if (cur >= amount) return true;
+  return send(`授權 ${S.symbol}`, () => S.usdc.approve(S.trust.getAddress(), amount));
+}
+
+// 空白的數字欄位會被當成 0，直接送出可能造成損失（例如終止時持有人拿到 0），所以先擋下來
+function percentOf(inputId, label) {
+  const raw = $(inputId).value.trim(), n = Number(raw);
+  if (raw === "" || !Number.isFinite(n) || n < 0 || n > 100) { toast(`${label}必須介於 0 到 100`, "err"); return null; }
+  return n;
+}
+// 金額的小數位數不能超過代幣的小數位數，且要大於 0；不合格回傳 null
+function amountOf(raw) {
+  const text = String(raw).trim();
+  if (!new RegExp(`^\\d+(\\.\\d{1,${DEC}})?$`).test(text)) return null;
+  const value = ethers.parseUnits(text, DEC);
+  return value > 0n ? value : null;
+}
+
+const act = {
+  setP(id) {
+    const p = percentOf(`p-${id}`, "完工機率");
+    if (p === null) return;
+    if (!Number.isInteger(p)) return toast("完工機率必須是整數", "err");
+    return send(`設定 #${id} 完工機率`, () => S.trust.setProbability(id, p));
+  },
+  list(id) {
+    const price = amountOf($(`price-${id}`).value);
+    if (price === null) return toast(`售價必須大於 0，最多 ${DEC} 位小數`, "err");
+    const item = S.items.find(i => i.id === id);
+    if (item && price > item.m.face) return toast(`售價不能高於面額 ${fmt(item.m.face)} ${S.symbol}`, "err");
+    return send(`上架 #${id}`, () => S.trust.list(id, price));
+  },
+  cancel: id => send(`取消上架 #${id}`, () => S.trust.cancelListing(id)),
+  async buy(id) {
+    const x = S.items.find(i => i.id === id);
+    if (!(await ensureAllowance(x.m.listPrice))) return;
+    await send(`購買 #${id}`, () => S.trust.buy(id, x.m.listPrice));
+  },
+  async claim(id) {
+    const h = await evidenceHash(`ev-${id}`, `evt-${id}`);
+    if (!h) return toast("請選擇驗收文件或輸入說明", "err");
+    await send(`申報 #${id} 完工`, () => S.trust.claimComplete(id, h));
+  },
+  attest: id => send(`核准 #${id}`, () => S.trust.attest(id)),
+  advance: n => send(`快轉 ${n} 天`, () => S.trust.advanceTime(n)),
+  async review(id) {
+    const percent = percentOf(`acc-${id}`, "實際完成比例");
+    if (percent === null) return;
+    if (percent === 100) return act.attest(id);
+    const h = await evidenceHash(`aev-${id}`, `aevt-${id}`);
+    if (!h) return toast("駁回時請選擇證明文件或輸入未完成的原因", "err");
+    await send(`駁回 #${id}`, () => S.trust.rejectClaim(id, Math.round(percent * 100), h));
+  },
+  async progress(id) {
+    const h = await evidenceHash(`pev-${id}`, `pevt-${id}`);
+    if (!h) return toast("請選擇進度證明文件或輸入說明", "err");
+    const percent = percentOf(`prog-${id}`, "進度");
+    if (percent === null) return;
+    const bps = Math.round(percent * 100);
+    await send(`回報 #${id} 進度`, () => S.trust.reportProgress(id, bps, h));
+  },
+  async terminate(id) {
+    const h = await evidenceHash(`tev-${id}`, `tevt-${id}`);
+    if (!h) return toast("請選擇鑑定文件或輸入說明", "err");
+    const percent = percentOf(`done-${id}`, "完成比例");
+    if (percent === null) return;
+    const bps = Math.round(percent * 100);
+    await send(`終止 #${id}`, () => S.trust.terminate(id, bps, h));
+  },
+};
+window.act = act;
+
+// 快轉天數 = 該期剩餘天數（無條件進位）+ 期限後天數；按下時才讀合約時間，避免用到舊的倒數
+async function gotoDeadline() {
+  const id = Number($("gotoId").value), late = Number($("gotoLate").value);
+  if (!Number.isInteger(late) || late < 0) return toast("期限後天數必須是 0 以上的整數", "err");
+  const x = S.items.find(i => i.id === id);
+  if (!x) return toast(`找不到第 ${$("gotoId").value} 期`, "err");
+  const remaining = Number(x.m.deadline - await S.trust.currentTime()) / Number(S.DAY);
+  const days = Math.ceil(remaining) + late;
+  if (days < 1) return toast(`合約時間已超過第 ${id} 期期限後 ${late} 天，時間不能倒退`, "err");
+  await act.advance(days);
+}
+
+// ───────────────────────── 業主：建立專案表單 ─────────────────────────
+const MAX_ROWS = 10;
+function addRow(face = 30000, days = 30) {
+  if ($("cpRows").children.length >= MAX_ROWS) return toast(`每個專案最多 ${MAX_ROWS} 期`, "err");
+  const div = document.createElement("div");
+  div.className = "row";
+  div.innerHTML = `<label><span>第 <span class="cp-no"></span> 期面額 <span class="sym">${esc(S.symbol)}</span></span><input class="num cp-face" type="number" value="${face}"></label>
+    <label><span class="cp-day-label"></span><input class="num cp-days" type="number" value="${days}" step="1"></label>
+    <span class="hint cp-due"></span>
+    <button class="ghost" type="button">移除</button>`;
+  div.querySelector("button").onclick = () => { div.remove(); updateTotal(); };
+  div.querySelectorAll("input").forEach(i => i.oninput = updateTotal);
+  $("cpRows").appendChild(div); updateTotal();
+}
+// 期限用「間隔天數」輸入：第 1 期距今，之後每期距上一期；這裡即時算出累計第幾天到期
+function updateTotal() {
+  const sum = [...document.querySelectorAll(".cp-face")].reduce((a, i) => a + Number(i.value || 0), 0);
+  $("cpTotal").textContent = sum.toLocaleString("zh-TW");
+  let day = 0;
+  [...$("cpRows").children].forEach((row, n) => {
+    day += Number(row.querySelector(".cp-days").value || 0);
+    row.querySelector(".cp-no").textContent = n + 1;
+    row.querySelector(".cp-day-label").textContent = n === 0 ? "距今幾天" : "距上一期幾天";
+    row.querySelector(".cp-due").textContent = `第 ${day} 天到期`;
+  });
+}
+async function createProject() {
+  if (!S.trust) return toast("請先連接錢包並設定合約", "err");
+  const contractor = $("cpContractor").value.trim(), attester = $("cpAttester").value.trim();
+  if (!ethers.isAddress(contractor) || !ethers.isAddress(attester)) return toast("請輸入正確的承包商與監造方地址", "err");
+  const faces = [...document.querySelectorAll(".cp-face")].map(i => amountOf(i.value));
+  const days = [...document.querySelectorAll(".cp-days")].map(i => Number(i.value));
+  if (!faces.length) return toast("至少需要一期", "err");
+  if (faces.includes(null)) return toast(`每期面額必須大於 0，最多 ${DEC} 位小數`, "err");
+  if (days.some(d => !(d > 0))) return toast("每期的間隔必須大於 0 天", "err");
+  // 每份部署只建一個專案：上鏈後刪不掉，資金也會鎖住，所以連重複按都要擋
+  if (creating) return;
+  if ((await S.trust.milestoneCount()) > 0n) { await refresh(); return toast("這份合約已經有專案，不能再建立", "err"); }
+  creating = true;
+  $("btnCreate").disabled = true;
+  try {
+    await submitProject(contractor, attester, faces, days);
+  } finally {
+    creating = false;
+    $("btnCreate").disabled = false;
+  }
+}
+let creating = false;
+async function submitProject(contractor, attester, faces, days) {
+  let due = await S.trust.currentTime();   // 從合約時間開始累加每期的間隔
+  const deadlines = days.map(d => (due += BigInt(Math.round(d * Number(S.DAY)))));
+  const total = faces.reduce((a, b) => a + b, 0n);
+  if (!(await ensureAllowance(total))) return;
+  await send("建立信託專案", () => S.trust.createProject(contractor, attester, faces, deadlines));
+}
+
+// ───────────────────────── 承包商工程損益（只在前端試算，不上鏈）─────────────────────────
+// 工程成本 = 面額 ×（1 − 利潤比例）；拖到被終止時，工程成本視為全額已投入，只拿回完成比例的款項。
+// 賣出之前違約金由承包商自己承擔（撥款給持有人時扣）；賣出之後改由當下持有人承擔。
+function loadMargin() {
+  try { const v = localStorage.getItem("mt-margin"); if (v !== null) $("asMargin").value = v; } catch (_) {}
+}
+function marginBps() {
+  const n = Number($("asMargin").value);
+  return Number.isFinite(n) ? Math.round(Math.min(Math.max(n, 0), 100) * 100) : 0;
+}
+function contractorPnl(items, evs, me, bps) {
+  const rows = items.filter(x => same(x.project.contractor, me)).map(x => {
+    const cost = x.m.face * BigInt(10000 - bps) / 10000n;
+    return { id: x.id, face: x.m.face, cost, status: Number(x.m.status), sold: 0n, payout: 0n, penalty: 0n, doneBps: null, onTime: x.m.face - cost, x };
+  });
+  const byId = id => rows.find(r => r.id === Number(id));
+  for (const e of evs) {
+    if (!e.fragment) continue;
+    const a = e.args, r = a.id !== undefined && e.fragment.name !== "ProjectCreated" ? byId(a.id) : null;
+    if (!r) continue;
+    switch (e.fragment.name) {
+      case "Sold":
+        if (same(a.seller, me)) r.sold += a.price;
+        if (same(a.buyer, me)) r.sold -= a.price;
+        break;
+      case "MilestonePaid":
+        if (same(a.holder, me)) { r.payout += a.toHolder; r.penalty = a.penalty; }
+        break;
+      case "MilestoneTerminated":
+        r.doneBps = BigInt(a.completedBps);
+        if (same(a.holder, me)) r.payout += a.toHolder;
+        break;
+    }
+  }
+  let total = 0n, counted = 0;
+  for (const r of rows) {
+    r.revenue = r.sold + r.payout;
+    r.costUsed = r.cost;
+    r.isSold = r.sold > 0n;
+    r.state = r.status === 3 ? `已終止（完成 ${Number(r.doneBps) / 100}%）` : r.status === 2 ? (r.isSold ? "已賣出，已撥款給持有人" : "已撥款給你") : r.isSold ? "已賣出，違約風險轉給持有人" : "未賣出，違約金由你承擔";
+    r.profit = r.isSold || r.status >= 2 ? r.revenue - r.costUsed : null;   // 還沒賣出也沒結算：只有預期，不計入
+    if (r.profit !== null) { total += r.profit; counted++; }
+  }
+  return { rows, total, counted };
+}
+function renderContractor(evs) {
+  const me = S.account;
+  const isContractor = S.items.some(x => same(x.project.contractor, me));
+  $("secContractor").hidden = !isContractor;
+  if (!isContractor) return;
+  const bps = marginBps(), p = contractorPnl(S.items, evs, me, bps), unit = esc(S.symbol);
+  const money = v => `${fmt(v < 0n ? -v : v)} ${unit}`;
+  const signed = v => v === null ? '<span class="muted">尚未發生</span>' : v === 0n ? "打平" : `<span class="${v > 0n ? "flow-in" : "flow-out"}">${v > 0n ? "賺" : "賠"} ${money(v)}</span>`;
+  const breakEven = Math.ceil(bps / Number(10));   // 每日違約金 0.1% = 10 bps
+  const graceDays = Number(S.GRACE) / Number(S.DAY);
+  $("marginHint").textContent = bps / 100 >= Math.min(graceDays * 0.1, 20)
+    ? `違約金最多 ${Math.min(graceDays * 0.1, 20)}%（寬限期 ${graceDays} 天），這個利潤比例下未賣出也不會因延誤虧損。`
+    : `沒賣出時，延誤超過 ${breakEven} 天就會虧損（寬限期 ${graceDays} 天）。`;
+  $("contractorPnl").innerHTML = `<div style="overflow-x:auto"><table>
+      <thead><tr><th>期別</th><th>面額</th><th>工程成本</th><th>準時預期獲利</th><th>目前狀態</th><th>損益</th></tr></thead>
+      <tbody>${p.rows.map(r => `<tr><td>#${r.id}</td><td>${money(r.face)}</td><td>${money(r.costUsed)}</td><td>${money(r.onTime)}</td><td>${r.state}</td><td>${signed(r.profit)}</td></tr>`).join("")}</tbody>
+    </table></div>
+    <p class="hint">工程成本是用利潤比例推算的試算，只存在這個瀏覽器，不會上鏈。</p>`;
+}
+function onMarginChange() {
+  try { localStorage.setItem("mt-margin", $("asMargin").value); } catch (_) {}
+  if (S.lastEvs) renderFlow(S.lastEvs);
+}
+
+// ───────────────────────── 資金流水與賺賠 ─────────────────────────
+// 依鏈上事件算目前帳號的每筆進出（只算信託內的代幣，不含 gas）。
+// 賺賠的算法：請款權 = 賣出或撥款收到的錢 − 買入成本；業主的工程款不算賺賠，只有違約金算賺。
+function flowOf(evs, me) {
+  const rows = [], cost = new Map();
+  let inflow = 0n, outflow = 0n, realized = 0n, penalties = 0n, locked = 0n, isOwner = false;
+  const add = (block, label, amount) => { rows.push({ block, label, amount }); if (amount >= 0n) inflow += amount; else outflow -= amount; };
+  const closePosition = (id, received) => { realized += received - (cost.get(id) || 0n); cost.delete(id); };
+  const ownerOfMilestone = id => S.items.find(x => x.id === Number(id))?.project.owner;
+
+  for (const e of evs) {
+    if (!e.fragment) continue;
+    const a = e.args, block = e.blockNumber;
+    switch (e.fragment.name) {
+      case "ProjectCreated":
+        if (same(a.owner, me)) { isOwner = true; locked += a.total; add(block, `存入專案 ${a.projectId} 工程款`, -a.total); }
+        break;
+      case "Sold":
+        if (same(a.seller, me)) { add(block, `賣出 #${a.id} 請款權`, a.price); closePosition(a.id, a.price); }
+        if (same(a.buyer, me)) { add(block, `買入 #${a.id} 請款權`, -a.price); cost.set(a.id, a.price); }
+        break;
+      case "MilestonePaid":
+        if (same(a.holder, me)) { add(block, `#${a.id} 撥款${a.penalty > 0n ? `（已扣違約金，延誤 ${a.daysLate} 天）` : ""}`, a.toHolder); closePosition(a.id, a.toHolder); }
+        if (same(ownerOfMilestone(a.id), me)) {
+          locked -= a.toHolder + a.penalty;
+          if (a.penalty > 0n) { penalties += a.penalty; add(block, `#${a.id} 違約金收入（延誤 ${a.daysLate} 天）`, a.penalty); }
+        }
+        break;
+      case "MilestoneTerminated":
+        if (same(a.holder, me)) { add(block, `#${a.id} 終止分配（完成 ${Number(a.completedBps) / 100}%）`, a.toHolder); closePosition(a.id, a.toHolder); }
+        if (same(ownerOfMilestone(a.id), me)) { locked -= a.toHolder + a.toOwner; if (a.toOwner > 0n) add(block, `#${a.id} 退回工程款（終止）`, a.toOwner); }
+        break;
+    }
+  }
+  const settled = rows.some(r => r.amount > 0n);
+  return { rows, inflow, outflow, profit: realized + penalties, locked, isOwner, settled, open: [...cost.entries()] };
+}
+
+function renderFlow(evs) {
+  const me = S.account;
+  if (!me) return;
+  S.lastEvs = evs;
+  renderContractor(evs);
+  $("secFlow").hidden = false;
+  const f = flowOf(evs, me), unit = esc(S.symbol);
+  const isContractor = S.items.some(x => same(x.project.contractor, me));
+  const pnl = isContractor ? contractorPnl(S.items, evs, me, marginBps()) : null;
+  const money = v => `${fmt(v < 0n ? -v : v)} ${unit}`;
+  const signed = v => `<span class="${v >= 0n ? "flow-in" : "flow-out"}">${v >= 0n ? "+" : "−"}${money(v)}</span>`;
+  if (!f.rows.length && isContractor) {
+    $("flow").innerHTML = `<div class="flow-result">結果：尚未賣出或結算，暫不計賺賠</div><p class="hint">下方「工程損益」列出每期的工程成本與準時預期獲利。</p>`;
+    return;
+  }
+  if (!f.rows.length) {
+    const why = same(S.oracle, me) ? "機率來源不持有請款權，也不經手資金。" : S.items.some(x => same(x.project.attester, me)) ? "監造方不持有自己專案的請款權，也不經手資金。" : S.items.some(x => same(x.owner, me)) ? "目前持有請款權，還沒有賣出或撥款。" : "目前沒有買賣或撥款紀錄。";
+    $("flow").innerHTML = `<div class="flow-result">結果：沒有資金往來，損益 0</div><p class="hint">${why}</p>`;
+    return;
+  }
+  const profit = pnl ? pnl.total : f.profit;   // 承包商要扣工程成本
+  const result = profit > 0n ? `<span class="flow-in">賺 ${money(profit)}</span>` : profit < 0n ? `<span class="flow-out">賠 ${money(profit)}</span>` : "打平";
+  const resultLine = !f.settled && f.open.length ? "結果：尚未結算，暫不計賺賠" : `結果：${result}`;
+  const notes = [];
+  for (const [id, c] of f.open) notes.push(`#${id} 持有中，買入成本 ${money(c)}，結算或賣出後才計入賺賠。`);
+  if (f.isOwner) notes.push(`工程款是付給工程的費用，不算賺賠；賺賠只計違約金與里程碑請款權交易。仍鎖在信託：${money(f.locked)}。`);
+  if (pnl) notes.push(`賺賠已扣工程成本（利潤比例 ${marginBps() / 100}%）。流入、流出只算鏈上的代幣；已賣出或已結算的期數才計入。`);
+  notes.push("只計信託內的代幣，不含 gas。");
+  $("flow").innerHTML = `<div style="overflow-x:auto"><table>
+      <thead><tr><th>區塊</th><th>事項</th><th>金額</th></tr></thead>
+      <tbody>${f.rows.map(r => `<tr><td>${r.block}</td><td>${esc(r.label)}</td><td>${signed(r.amount)}</td></tr>`).join("")}</tbody>
+    </table></div>
+    <div class="row" style="margin-top:10px">
+      <span>流入 <b>${money(f.inflow)}</b></span><span>流出 <b>${money(f.outflow)}</b></span><span>淨現金流 ${signed(f.inflow - f.outflow)}</span>
+    </div>
+    <div class="flow-result">${resultLine}</div>
+    ${notes.map(n => `<p class="hint" style="margin:2px 0">${n}</p>`).join("")}`;
+}
+
+// ───────────────────────── 稽核紀錄 ─────────────────────────
+async function loadAudit() {
+  try {
+    const latest = await S.provider.getBlockNumber();
+    const from = Number($("cfgFrom").value) || Math.max(0, latest - 45000);
+    const evs = await S.trust.queryFilter("*", from, latest);
+    renderFlow(evs);
+    const rows = evs.filter(e => e.fragment).reverse().slice(0, 200).map(e => {
+      const a = e.args, n = e.fragment.name;
+      const d = {
+        ProjectCreated: () => `專案 ${a.projectId}：${a.count} 期，共 ${fmt(a.total)}，業主 ${short(a.owner)}`,
+        TimeAdvanced: () => `快轉 ${a.numDays} 天，合約時間變為 ${new Date(Number(a.newTime) * 1000).toLocaleString("zh-TW")}`,
+        ProbabilitySet: () => `#${a.id} 完工機率設為 ${a.probability}%`,
+        Listed: () => `#${a.id} 以 ${fmt(a.price)} 上架`,
+        ListingCancelled: () => `#${a.id} 取消上架`,
+        Sold: () => `#${a.id} ${short(a.seller)} → ${short(a.buyer)}，成交 ${fmt(a.price)}`,
+        CompletionClaimed: () => `#${a.id} 申報完工，證據 ${short(a.evidenceHash)}`,
+        ClaimRejected: () => `#${a.id} 申報被駁回`,
+        ProgressReported: () => `#${a.id} 進度回報：${Number(a.bps) / 100}%・${new Date(Number(a.reportedAt) * 1000).toLocaleString("zh-TW")}・證據 ${short(a.evidenceHash)}`,
+        MilestonePaid: () => `#${a.id} 撥給 ${short(a.holder)} ${fmt(a.toHolder)}，延誤 ${a.daysLate} 天，違約金 ${fmt(a.penalty)}`,
+        MilestoneTerminated: () => `#${a.id} 終止：完成 ${Number(a.completedBps) / 100}%，持有人 ${fmt(a.toHolder)}、業主 ${fmt(a.toOwner)}`,
+      }[n];
+      return `<tr${n === "ProgressReported" ? ' class="ev-progress"' : ""}><td>${e.blockNumber}</td><td>${esc(n)}</td><td>${d ? esc(d()) : ""}</td><td><a href="${EXPLORER}/tx/${e.transactionHash}" target="_blank" rel="noopener">${short(e.transactionHash)}</a></td></tr>`;
+    });
+    $("audit").innerHTML = rows.join("") || '<tr><td colspan="4" class="empty">尚無事件</td></tr>';
+  } catch (e) {
+    $("audit").innerHTML = `<tr><td colspan="4" class="empty">讀取事件失敗：${esc(reason(e))}（可填入部署區塊縮小範圍）</td></tr>`;
+  }
+}
+
+// ───────────────────────── 綁定 ─────────────────────────
+$("btnConnect").onclick = () => connect(true);
+$("btnSaveCfg").onclick = async () => { saveCfg(); await bindContracts(); };
+$("btnReload").onclick = refresh;
+$("btnAddRow").onclick = () => addRow();
+$("btnCreate").onclick = createProject;
+$("asMargin").oninput = onMarginChange;
+loadMargin();
+$("btnClockGoto").onclick = gotoDeadline;
+$("btnClockCustom").onclick = () => {
+  const n = Number($("clockDays").value);
+  if (!Number.isInteger(n) || n < 1) return toast("快轉天數必須是 1 以上的整數", "err");
+  act.advance(n);
+};
+$("btnMint").onclick = () => S.usdc ? send(`領取測試 ${S.symbol}`, () => S.usdc.mint(S.account, ethers.parseUnits("100000", DEC))) : toast("請先連接並設定合約", "err");
+["asRate", "asLateShare", "asLateDays", "asTermDone"].forEach(k => $(k).oninput = () => { renderPriceRef(); if (S.items.length) renderMilestones(); });
+if (window.ethereum) {
+  window.ethereum.on?.("accountsChanged", accounts => accounts.length ? connect() : disconnected());
+  window.ethereum.on?.("chainChanged", () => location.reload());
+}
+const cfgReady = loadCfg();
+addRow(20000, 25); addRow(40000, 30); addRow(30000, 35);
+renderPriceRef();
+setInterval(syncAccount, 2000);
+window.addEventListener("focus", syncAccount);
+setInterval(() => { if (S.trust) refresh(); }, 20000);   // 每 20 秒更新倒數與狀態
+</script>
+</body>
+</html>

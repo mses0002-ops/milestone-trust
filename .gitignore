@@ -1,0 +1,15 @@
+# 機密：絕對不能上傳
+.env
+.env.*
+!.env.example
+
+# 相依套件與測試產物
+node_modules/
+test/abi.json
+test/ui.png
+
+# 部署紀錄（前端需要的 frontend/deployments.json 要保留）
+/deployment*.json
+
+# 個人報告素材，不屬於程式碼
+簡報生成指引.md
